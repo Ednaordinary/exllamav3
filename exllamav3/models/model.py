@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 import os, json
+from typing import Callable
 from .config import Config
 from ..util.progress import ProgressBar
 from ..util.memory import set_memory_fraction_reserve, set_memory_fraction_use, unset_memory_fraction, free_mem
@@ -85,7 +86,7 @@ class Model:
 
 
     # Load to single device
-    def _load_single(self, progressbar: bool, device: torch.device):
+    def _load_single(self, progressbar: bool, callback: Callable[[int, int], None] | None = None, device: torch.device):
         with ProgressBar(f"Loading" if progressbar else None, len(self.modules)) as progress:
             for idx, module in enumerate(self.modules):
                 module.load(torch.device("cpu") if module.caps.get("prefer_cpu") else device)
@@ -96,6 +97,7 @@ class Model:
     def _load_autosplit(
         self,
         progressbar: bool,
+        callback: Callable[[int, int], None] | None = None,
         reserve_per_device: list[int] | None,
         use_per_device: list[int] | None,
         active_devices: list[int],
@@ -201,6 +203,7 @@ class Model:
         use_per_device: list[float] | float | None = None,
         tensor_p: bool = False,
         progressbar: bool = False,
+        callback: Callable[[int, int], None] | None = None,
         max_chunk_size: int = 2048,
         max_output_size: int = 32,
         max_output_factor: int = 1,
@@ -257,6 +260,9 @@ class Model:
 
         :param progressbar:
             Show rich progressbar while loading
+
+        :param callback:
+            Calls this function with (layers_loaded, layers_remaining) while loading
         """
 
         free_mem()
@@ -274,7 +280,7 @@ class Model:
                 "Cannot specify reserve_per_device or use_per_device when loading to single device."
             assert not tensor_p, \
                 "Cannot use tensor_p when loading to single device."
-            self._load_single(progressbar, device)
+            self._load_single(progressbar, callback, device)
 
         # Split load
         elif not tensor_p:
@@ -312,6 +318,7 @@ class Model:
 
             self._load_autosplit(
                 progressbar,
+                callback,
                 reserve_per_device,
                 use_per_device,
                 active_devices,
